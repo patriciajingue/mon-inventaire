@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📦 Tableau de Bord Inventaire</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0a0f1e;color:#e2e8f0;padding:20px;min-height:100vh}
+  h1{text-align:center;font-size:1.6rem;font-weight:800;color:#f1f5f9;margin-bottom:4px}
+  .sub{text-align:center;color:#64748b;font-size:.82rem;margin-bottom:20px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  .stat{background:#111827;border-radius:12px;padding:16px 10px;text-align:center;border:1px solid #1f2937}
+  .stat-val{font-size:2rem;font-weight:800;line-height:1}
+  .stat-lbl{font-size:.7rem;color:#64748b;margin-top:5px}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .tab{padding:7px 16px;border-radius:8px;border:none;cursor:pointer;font-size:.82rem;background:#1f2937;color:#94a3b8;font-family:inherit;transition:all .15s}
+  .tab.active{background:#6366f1;color:#fff;font-weight:700}
+  .sec{display:none}.sec.active{display:block}
+  .card{background:#111827;border-radius:12px;padding:18px;border:1px solid #1f2937;margin-bottom:16px}
+  .card h2{font-size:.9rem;font-weight:700;color:#e2e8f0;margin-bottom:14px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .chart-wrap{position:relative;height:280px}
+  .chart-wrap-sm{position:relative;height:200px}
+  table{width:100%;border-collapse:collapse;font-size:.8rem}
+  th{padding:8px 10px;text-align:left;color:#64748b;font-weight:600;font-size:.72rem;background:#0a0f1e;position:sticky;top:0}
+  td{padding:8px 10px;border-bottom:1px solid #1f2937}
+  tr:hover td{background:#ffffff05}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:.68rem;font-weight:700}
+  .badge-out{background:#3b0764;color:#e9d5ff}
+  .badge-crit{background:#7f1d1d;color:#fca5a5}
+  .badge-low{background:#7c2d12;color:#fdba74}
+  .badge-ok{background:#14532d;color:#86efac}
+  .legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .legend-item{display:flex;align-items:center;gap:5px;font-size:.75rem;color:#cbd5e1}
+  .legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  @media(max-width:640px){.stats{grid-template-columns:1fr 1fr}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<h1>📦 Tableau de Bord Inventaire</h1>
+<p class="sub">2 Mars 2026 · Ventes: Vendredi 27 Fév, Samedi 28, Dimanche 1er Mars</p>
+
+<div class="stats">
+  <div class="stat"><div class="stat-val" style="color:#f87171" id="s1">—</div><div class="stat-lbl">Rupture de Stock</div></div>
+  <div class="stat"><div class="stat-val" style="color:#fb923c" id="s2">—</div><div class="stat-lbl">Stock Faible (≤3)</div></div>
+  <div class="stat"><div class="stat-val" style="color:#4ade80" id="s3">—</div><div class="stat-lbl">Articles Disponibles</div></div>
+  <div class="stat"><div class="stat-val" style="color:#60a5fa">44 250f</div><div class="stat-lbl">CA Total (FCFA)</div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showTab('overview',this)">📊 Vue d'ensemble</button>
+  <button class="tab" onclick="showTab('ventes',this)">🛒 Ventes</button>
+  <button class="tab" onclick="showTab('critique',this)">🚨 Stock Critique</button>
+  <button class="tab" onclick="showTab('inventaire',this)">📋 Inventaire Complet</button>
+</div>
+
+<div id="overview" class="sec active">
+  <div class="grid2">
+    <div class="card"><h2>🏆 Top Articles Vendus</h2><div class="chart-wrap"><canvas id="c1"></canvas></div></div>
+    <div class="card"><h2>⚠️ Stock Critique (quantité restante)</h2><div class="chart-wrap"><canvas id="c2"></canvas></div></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h2>💰 Chiffre d'Affaires par Jour</h2><div class="chart-wrap-sm"><canvas id="c3"></canvas></div></div>
+    <div class="card"><h2>📦 Stock par Catégorie</h2><div class="chart-wrap-sm"><canvas id="c4"></canvas><div class="legend" id="catLegend"></div></div></div>
+  </div>
+</div>
+
+<div id="ventes" class="sec">
+  <div class="card"><h2>🛒 Détail des Ventes — 27 Fév au 1er Mars</h2>
+    <div style="overflow-x:auto">
+    <table><thead><tr><th>Article</th><th>Vendredi 27</th><th>Samedi 28</th><th>Dimanche 1er</th><th>Total Qté</th><th>Total FCFA</th></tr></thead>
+    <tbody id="tVentes"></tbody></table></div>
+  </div>
+</div>
+
+<div id="critique" class="sec">
+  <div class="card"><h2>🚨 Articles à Réapprovisionner en Priorité</h2>
+    <div style="overflow-x:auto">
+    <table><thead><tr><th>Article</th><th>Catégorie</th><th>Prix Unitaire</th><th>Stock Restant</th><th>Statut</th></tr></thead>
+    <tbody id="tCritique"></tbody></table></div>
+  </div>
+</div>
+
+<div id="inventaire" class="sec">
+  <div class="card"><h2 id="invTitle">📋 Inventaire Complet</h2>
+    <div style="overflow-x:auto">
+    <table><thead><tr><th>Article</th><th>Catégorie</th><th>Prix</th><th>Stock Initial</th><th>Vendu</th><th>Restant</th><th>Statut</th></tr></thead>
+    <tbody id="tInv"></tbody></table></div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────
+const INV = [
+  {n:"Le Paté",p:2800,s:4,c:"Alimentation"},{n:"Chocolat GM",p:2350,s:5,c:"Alimentation"},
+  {n:"Chocolat PM",p:1500,s:6,c:"Alimentation"},{n:"Matinal PM",p:1500,s:15,c:"Alimentation"},
+  {n:"Beurre Jadida 900g",p:2500,s:2,c:"Alimentation"},{n:"Ovaltine 400g",p:2500,s:9,c:"Alimentation"},
+  {n:"Lait Liquide Broli",p:1400,s:11,c:"Alimentation"},{n:"Huile Arachide Mayor",p:1500,s:2,c:"Alimentation"},
+  {n:"Huile Arachide Oléo",p:1500,s:4,c:"Alimentation"},{n:"Brosse à dent",p:400,s:11,c:"Hygiène"},
+  {n:"Colgate Charbon",p:1250,s:3,c:"Hygiène"},{n:"Colgate Herbal",p:1100,s:7,c:"Hygiène"},
+  {n:"Sucre en poudre 1kg",p:850,s:6,c:"Alimentation"},{n:"Lait Peak",p:500,s:22,c:"Alimentation"},
+  {n:"Sauce Crudité",p:1900,s:8,c:"Alimentation"},{n:"Maïs doux",p:1500,s:9,c:"Alimentation"},
+  {n:"Olive Wadifood",p:1300,s:17,c:"Alimentation"},{n:"Olive Vert",p:1550,s:4,c:"Alimentation"},
+  {n:"Beignet Crevette",p:500,s:16,c:"Alimentation"},{n:"Nido Chocolat",p:200,s:40,c:"Alimentation"},
+  {n:"Nido Vanille",p:150,s:40,c:"Alimentation"},{n:"Mambo Riz",p:250,s:11,c:"Boissons"},
+  {n:"Mambo Noir",p:200,s:16,c:"Boissons"},{n:"Mambo au Lait",p:200,s:16,c:"Boissons"},
+  {n:"Grand Mambo",p:1000,s:5,c:"Boissons"},{n:"Spaghetti Salaka",p:400,s:15,c:"Alimentation"},
+  {n:"Spaghetti Barka",p:400,s:17,c:"Alimentation"},{n:"Spaghetti Pasta First",p:500,s:28,c:"Alimentation"},
+  {n:"Macaroni Pasta First",p:250,s:40,c:"Alimentation"},{n:"Cube Magie",p:1000,s:7,c:"Alimentation"},
+  {n:"Mayonnaise GM",p:3000,s:3,c:"Alimentation"},{n:"Mayonnaise PM",p:1500,s:0,c:"Alimentation"},
+  {n:"Vinaigre",p:400,s:4,c:"Alimentation"},{n:"Thé Vert",p:15000,s:4,c:"Boissons"},
+  {n:"Emily Essuie Tout",p:1100,s:6,c:"Maison"},{n:"Couche Molfix PM",p:1100,s:10,c:"Bébé"},
+  {n:"Papier Aluminium",p:1000,s:16,c:"Maison"},{n:"Ketchup",p:1000,s:17,c:"Alimentation"},
+  {n:"Papier Hyg. Hobby",p:180,s:5,c:"Hygiène"},{n:"Papier Hyg. Sita",p:285,s:28,c:"Hygiène"},
+  {n:"Faytex",p:650,s:1,c:"Hygiène"},{n:"Détergent Ola",p:50,s:34,c:"Maison"},
+  {n:"Lingettes GM",p:1000,s:4,c:"Hygiène"},{n:"Lingettes PM",p:500,s:5,c:"Hygiène"},
+  {n:"Savon Azur",p:350,s:12,c:"Hygiène"},{n:"Savon Mayor",p:350,s:0,c:"Hygiène"},
+  {n:"Crème Citron",p:1350,s:11,c:"Beauté"},{n:"Bain Bouche Colgate",p:3500,s:3,c:"Hygiène"},
+  {n:"Désodorisants",p:1950,s:6,c:"Hygiène"},{n:"Insecticides",p:1750,s:2,c:"Maison"},
+  {n:"Biscuit Parle G",p:1500,s:4,c:"Alimentation"},{n:"Biscuits O'choco",p:1300,s:4,c:"Alimentation"},
+  {n:"Biscuits Cookies",p:1500,s:4,c:"Alimentation"},{n:"Biscuits Amore",p:1800,s:3,c:"Alimentation"},
+  {n:"Biscuits Peticœur",p:600,s:12,c:"Alimentation"},{n:"Lotus Tiof",p:100,s:7,c:"Alimentation"},
+  {n:"Whisky Grants",p:10000,s:7,c:"Alcools"},{n:"Whisky AFRICAN Queen",p:4000,s:4,c:"Alcools"},
+  {n:"Vin MSX NUA Moscato",p:6400,s:5,c:"Alcools"},{n:"Vin MSX NUA Moscato Rose",p:6400,s:5,c:"Alcools"},
+  {n:"Merrys Irish Cream",p:8000,s:6,c:"Alcools"},{n:"Baileys",p:10000,s:8,c:"Alcools"},
+  {n:"Yacht Club 3 ans",p:6200,s:4,c:"Alcools"},{n:"MONKEY SHOULDER",p:27000,s:5,c:"Alcools"},
+  {n:"Robertson Winery Blanc",p:5600,s:6,c:"Alcools"},{n:"Robertson Winery Rouge",p:5600,s:6,c:"Alcools"},
+  {n:"Vin ASCONi AGOR",p:5100,s:6,c:"Alcools"},{n:"MSX SPU Moscato Rose",p:5100,s:6,c:"Alcools"},
+  {n:"MSX SPU Moscato Blanc",p:6200,s:4,c:"Alcools"},{n:"Isabelle de France Rouge",p:3500,s:4,c:"Alcools"},
+  {n:"Isabelle de France Blanc",p:3500,s:0,c:"Alcools"},{n:"Eschenauer Bx Rouge",p:5400,s:2,c:"Alcools"},
+  {n:"Eschenauer Bx Blanc",p:5400,s:2,c:"Alcools"},{n:"Eschenauer Merlot",p:5100,s:4,c:"Alcools"},
+  {n:"Eschenauer Cab. Sauv.",p:5100,s:2,c:"Alcools"},{n:"Vin Grand VERSANT",p:3250,s:3,c:"Alcools"},
+  {n:"Grandia Blanc",p:3000,s:5,c:"Alcools"},{n:"Grandia Rouge",p:3000,s:6,c:"Alcools"},
+  {n:"MONTMEYRAC Rouge",p:3100,s:1,c:"Alcools"},{n:"Whisky CHANCELER",p:4000,s:1,c:"Alcools"},
+  {n:"El Vino",p:1500,s:7,c:"Alcools"},{n:"Malta Vanpur",p:800,s:23,c:"Boissons"},
+  {n:"Beaucoup Ordinaire",p:1000,s:3,c:"Boissons"},{n:"33",p:1000,s:18,c:"Boissons"},
+  {n:"Castel",p:1000,s:12,c:"Boissons"},{n:"Booster",p:1000,s:0,c:"Boissons"},
+  {n:"Chill",p:700,s:8,c:"Boissons"},{n:"Manyan",p:700,s:19,c:"Boissons"},
+  {n:"Bullet",p:1000,s:14,c:"Boissons"},{n:"Malta Guinness",p:500,s:1,c:"Boissons"},
+  {n:"Bavaria Pomme",p:1000,s:13,c:"Boissons"},{n:"Bavaria Nature",p:1000,s:14,c:"Boissons"},
+  {n:"Mützig",p:1000,s:23,c:"Boissons"},{n:"Heineken",p:1000,s:0,c:"Boissons"},
+  {n:"Top Grenadine",p:500,s:15,c:"Boissons"},{n:"Top Orange",p:500,s:17,c:"Boissons"},
+  {n:"Top Pamplemousse",p:500,s:3,c:"Boissons"},{n:"Top Ananas",p:500,s:14,c:"Boissons"},
+  {n:"Djino",p:650,s:36,c:"Boissons"},{n:"Vimto",p:800,s:0,c:"Boissons"},
+  {n:"Orangina",p:800,s:0,c:"Boissons"},{n:"Schweppes Agrume",p:650,s:6,c:"Boissons"},
+  {n:"Schweppes Tonic",p:650,s:10,c:"Boissons"},{n:"Spécial Pamplemousse",p:600,s:13,c:"Boissons"},
+  {n:"Coca Cola",p:600,s:16,c:"Boissons"},{n:"American Cola",p:500,s:4,c:"Boissons"},
+  {n:"Fruit Rouge",p:500,s:1,c:"Boissons"},{n:"Reaktor",p:500,s:60,c:"Boissons"},
+  {n:"Fanta",p:500,s:12,c:"Boissons"},{n:"Lait Vitamine C",p:5000,s:60,c:"Beauté"},
+  {n:"Lait Collagène",p:5000,s:70,c:"Beauté"},{n:"Lait Acide Hyaluronic",p:5000,s:89,c:"Beauté"},
+  {n:"Savon Anti Acné",p:1500,s:1,c:"Beauté"},{n:"Hair Oil Hair Care",p:3000,s:1,c:"Beauté"},
+  {n:"Tea Free Hair Oil",p:3000,s:1,c:"Beauté"},{n:"Eau Supermont",p:400,s:63,c:"Eau"},
+  {n:"Eau Vitale",p:300,s:3,c:"Eau"},{n:"Petite Bouteille d'eau",p:200,s:2,c:"Eau"},
+];
+
+const SALES = [
+  // VENDREDI 27
+  {n:"Schweppes Agrume",q:1,d:0,r:650},
+  {n:"Savon Anti Acné",q:1,d:0,r:1500},
+  {n:"Hair Oil Hair Care",q:1,d:0,r:3000},
+  {n:"Tea Free Hair Oil",q:1,d:0,r:3000},
+  {n:"Lait Vitamine C",q:1,d:0,r:5000},
+  {n:"Eau Supermont",q:3,d:0,r:1200},
+  {n:"Huile Arachide Oléo",q:1,d:0,r:1500},
+  {n:"Eau Vitale",q:1,d:0,r:300},
+  {n:"Fruit Rouge",q:1,d:0,r:500},
+  {n:"Petite Bouteille d'eau",q:1,d:0,r:200},
+  // SAMEDI 28
+  {n:"Coca Cola",q:1,d:1,r:600},
+  {n:"Fanta",q:1,d:1,r:500},
+  {n:"Malta Vanpur",q:3,d:1,r:2400},
+  {n:"Ketchup",q:1,d:1,r:1000},
+  {n:"El Vino",q:2,d:1,r:3000},
+  {n:"Schweppes Tonic",q:1,d:1,r:650},
+  {n:"Mambo Noir",q:1,d:1,r:200},
+  {n:"Bavaria Pomme",q:2,d:1,r:2000},
+  {n:"Eau Supermont",q:1,d:1,r:400},
+  {n:"Papier Aluminium",q:1,d:1,r:1100},
+  {n:"Biscuits Peticœur",q:1,d:1,r:600},
+  {n:"Malta Guinness",q:1,d:1,r:500},
+  // DIMANCHE 1er
+  {n:"Fanta",q:1,d:2,r:500},
+  {n:"Petite Bouteille d'eau",q:2,d:2,r:400},
+  {n:"Coca Cola",q:3,d:2,r:1800},
+  {n:"Malta Vanpur",q:2,d:2,r:1600},
+  {n:"Top Grenadine",q:3,d:2,r:1500},
+  {n:"Bavaria Pomme",q:1,d:2,r:1000},
+  {n:"Mützig",q:1,d:2,r:1000},
+  {n:"Mambo Riz",q:2,d:2,r:500},
+  {n:"Reaktor",q:1,d:2,r:500},
+  {n:"Lotus Tiof",q:1,d:2,r:100},
+  {n:"33",q:1,d:2,r:3000},
+  {n:"Eau Supermont",q:1,d:2,r:400},
+  {n:"Mambo Noir",q:1,d:2,r:200},
+  {n:"Papier Hyg. Hobby",q:1,d:2,r:1100},
+  {n:"Vimto",q:1,d:2,r:800},
+  {n:"Top Grenadine",q:1,d:2,r:500},
+];
+
+const DAY_TOTALS = [16850, 13000, 14400];
+const COLORS = ["#6366f1","#22d3ee","#f59e0b","#10b981","#f43f5e","#a78bfa","#34d399","#fb923c","#60a5fa","#e879f9","#fbbf24","#4ade80"];
+const CAT_COLORS = {Boissons:"#22d3ee",Alimentation:"#6366f1",Alcools:"#f59e0b",Hygiène:"#10b981",Beauté:"#f43f5e",Maison:"#a78bfa",Bébé:"#34d399",Eau:"#38bdf8"};
+
+// Build sold map
+const SM = {};
+SALES.forEach(s => {
+  if (!SM[s.n]) SM[s.n] = {d:[0,0,0], q:0, r:0};
+  SM[s.n].d[s.d] += s.q;
+  SM[s.n].q += s.q;
+  SM[s.n].r += s.r;
+});
+
+// Enrich inventory
+const inventory = INV.map(i => {
+  const sold = SM[i.n]?.q || 0;
+  return {...i, sold, rem: Math.max(0, i.s - sold)};
+});
+
+const fmt = n => n.toLocaleString('fr-FR');
+const badge = rem => {
+  if (rem === 0) return '<span class="badge badge-out">Rupture</span>';
+  if (rem <= 2)  return '<span class="badge badge-crit">Critique</span>';
+  if (rem <= 5)  return '<span class="badge badge-low">Faible</span>';
+  return '<span class="badge badge-ok">OK</span>';
+};
+
+// Stats
+document.getElementById('s1').textContent = inventory.filter(i => i.rem === 0).length;
+document.getElementById('s2').textContent = inventory.filter(i => i.rem > 0 && i.rem <= 3).length;
+document.getElementById('s3').textContent = inventory.filter(i => i.rem > 0).length;
+
+// ── CHART 1: Top Sold ─────────────────────────────────
+const topSold = Object.entries(SM).sort((a,b) => b[1].q - a[1].q).slice(0,12);
+new Chart(document.getElementById('c1'), {
+  type: 'bar',
+  data: {
+    labels: topSold.map(([n]) => n.length > 18 ? n.slice(0,18)+'…' : n),
+    datasets: [{
+      data: topSold.map(([,v]) => v.q),
+      backgroundColor: topSold.map((_,i) => COLORS[i % COLORS.length]),
+      borderRadius: 5,
+      borderSkipped: false
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: {display:false}, tooltip: {
+      callbacks: { label: ctx => ` ${ctx.raw} unité(s)` }
+    }},
+    scales: {
+      x: { ticks:{color:'#64748b',font:{size:10}}, grid:{color:'#1f2937'}, border:{display:false} },
+      y: { ticks:{color:'#cbd5e1',font:{size:11}}, grid:{display:false}, border:{display:false} }
+    }
+  }
+});
+
+// ── CHART 2: Critical Stock ───────────────────────────
+const critItems = inventory.filter(i => i.rem > 0 && i.rem <= 5).sort((a,b) => a.rem - b.rem).slice(0,14);
+new Chart(document.getElementById('c2'), {
+  type: 'bar',
+  data: {
+    labels: critItems.map(i => i.n.length > 18 ? i.n.slice(0,18)+'…' : i.n),
+    datasets: [{
+      data: critItems.map(i => i.rem),
+      backgroundColor: critItems.map(i => i.rem === 1 ? '#ef4444' : i.rem <= 2 ? '#f97316' : '#eab308'),
+      borderRadius: 5,
+      borderSkipped: false
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: {display:false}, tooltip: {
+      callbacks: { label: ctx => ` ${ctx.raw} restant(s)` }
+    }},
+    scales: {
+      x: { ticks:{color:'#64748b',font:{size:10},stepSize:1}, grid:{color:'#1f2937'}, border:{display:false}, max:6 },
+      y: { ticks:{color:'#cbd5e1',font:{size:11}}, grid:{display:false}, border:{display:false} }
+    }
+  }
+});
+
+// ── CHART 3: Revenue by Day ───────────────────────────
+new Chart(document.getElementById('c3'), {
+  type: 'bar',
+  data: {
+    labels: ['Vendredi 27', 'Samedi 28', 'Dimanche 1er'],
+    datasets: [{
+      data: DAY_TOTALS,
+      backgroundColor: ['#6366f1','#22d3ee','#10b981'],
+      borderRadius: 8,
+      borderSkipped: false
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend:{display:false}, tooltip:{
+      callbacks:{ label: ctx => ` ${fmt(ctx.raw)} FCFA` }
+    }},
+    scales: {
+      x: { ticks:{color:'#94a3b8',font:{size:11}}, grid:{display:false}, border:{display:false} },
+      y: { ticks:{color:'#64748b',font:{size:10}, callback: v => (v/1000)+'k'}, grid:{color:'#1f2937'}, border:{display:false} }
+    }
+  }
+});
+
+// ── CHART 4: Category Pie ─────────────────────────────
+const catMap = {};
+inventory.forEach(i => { catMap[i.c] = (catMap[i.c]||0) + i.rem; });
+const catEntries = Object.entries(catMap).sort((a,b) => b[1]-a[1]);
+new Chart(document.getElementById('c4'), {
+  type: 'doughnut',
+  data: {
+    labels: catEntries.map(([c]) => c),
+    datasets: [{
+      data: catEntries.map(([,v]) => v),
+      backgroundColor: catEntries.map(([c],i) => CAT_COLORS[c] || COLORS[i]),
+      borderWidth: 2, borderColor: '#111827'
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend:{display:false}, tooltip:{
+      callbacks:{ label: ctx => ` ${ctx.label}: ${ctx.raw} articles` }
+    }}
+  }
+});
+// Manual legend
+const leg = document.getElementById('catLegend');
+catEntries.forEach(([c],i) => {
+  leg.innerHTML += `<div class="legend-item"><div class="legend-dot" style="background:${CAT_COLORS[c]||COLORS[i]}"></div>${c}</div>`;
+});
+
+// ── TABLE: Ventes ─────────────────────────────────────
+const tVentes = document.getElementById('tVentes');
+Object.entries(SM).sort((a,b) => b[1].q - a[1].q).forEach(([name, d]) => {
+  tVentes.innerHTML += `<tr>
+    <td style="color:#e2e8f0;font-weight:500">${name}</td>
+    <td style="color:#94a3b8">${d.d[0]||'—'}</td>
+    <td style="color:#94a3b8">${d.d[1]||'—'}</td>
+    <td style="color:#94a3b8">${d.d[2]||'—'}</td>
+    <td style="color:#6366f1;font-weight:700">${d.q}</td>
+    <td style="color:#22d3ee">${fmt(d.r)} f</td>
+  </tr>`;
+});
+
+// ── TABLE: Critique ───────────────────────────────────
+const tCritique = document.getElementById('tCritique');
+inventory.filter(i => i.rem <= 3).sort((a,b) => a.rem - b.rem).forEach(i => {
+  const remColor = i.rem === 0 ? '#a78bfa' : i.rem === 1 ? '#f87171' : '#fb923c';
+  tCritique.innerHTML += `<tr>
+    <td style="color:#e2e8f0;font-weight:600">${i.n}</td>
+    <td style="color:#64748b">${i.c}</td>
+    <td style="color:#94a3b8">${fmt(i.p)} f</td>
+    <td style="color:${remColor};font-weight:800;font-size:1rem">${i.rem}</td>
+    <td>${badge(i.rem)}</td>
+  </tr>`;
+});
+
+// ── TABLE: Inventaire Complet ─────────────────────────
+const tInv = document.getElementById('tInv');
+document.getElementById('invTitle').textContent = `📋 Inventaire Complet (${inventory.length} articles)`;
+[...inventory].sort((a,b) => a.rem - b.rem).forEach(i => {
+  const remColor = i.rem === 0 ? '#a78bfa' : i.rem <= 2 ? '#f87171' : i.rem <= 5 ? '#fb923c' : '#4ade80';
+  tInv.innerHTML += `<tr>
+    <td style="color:#e2e8f0">${i.n}</td>
+    <td style="color:#64748b">${i.c}</td>
+    <td style="color:#94a3b8">${fmt(i.p)}</td>
+    <td style="color:#64748b">${i.s}</td>
+    <td style="color:#6366f1">${i.sold}</td>
+    <td style="color:${remColor};font-weight:700">${i.rem}</td>
+    <td>${badge(i.rem)}</td>
+  </tr>`;
+});
+
+// ── TAB SWITCHING ─────────────────────────────────────
+function showTab(id, btn) {
+  document.querySelectorAll('.sec').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+</body>
+</html>
