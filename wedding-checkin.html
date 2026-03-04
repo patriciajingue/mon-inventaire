@@ -324,7 +324,7 @@ async function loadFromSheets() {
   const bar = document.getElementById('status-bar');
   bar.innerHTML = `<div class="cloud-status loading">&#8987; Loading guest list from Google Sheets&#8230;</div>`;
   try {
-    const res = await fetch(scriptUrl + '?action=get');
+    const res = await fetch(scriptUrl + '?action=get', {mode:'cors'});
     const data = await res.json();
     if (Array.isArray(data)) {
       guests = data;
@@ -345,7 +345,10 @@ async function saveToSheets() {
   clearTimeout(syncTimeout);
   syncTimeout = setTimeout(async () => {
     try {
-      await fetch(scriptUrl + '?action=save&data=' + encodeURIComponent(JSON.stringify(guests)));
+      const form = new FormData();
+      form.append('action', 'save');
+      form.append('data', JSON.stringify(guests));
+      await fetch(scriptUrl, { method: 'POST', body: form });
     } catch(e) { /* silent fail, local is already saved */ }
   }, 800);
 }
@@ -447,7 +450,7 @@ function renderQR() {
       ${g.isCouple ? '<div style="font-size:12px;color:#3A5FC8;margin-bottom:2px">&#128107; COUPLE INVITE</div>' : ''}
       <div class="table-label">Table ${g.table}</div>
       <div class="qr-wrap" id="qr-${g.id}"></div>
-      <button class="btn btn-outline btn-sm" onclick="downloadQR('${g.id}','${g.name.replace(/'/g,'\\'')}')">Download</button>
+      <button class="btn btn-outline btn-sm" onclick="downloadQR(this.dataset.id, this.dataset.name)" data-id="${g.id}" data-name="${g.name}">Download</button>
     </div>`).join('');
   guests.forEach(g => {
     const el = document.getElementById('qr-' + g.id);
