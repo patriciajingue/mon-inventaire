@@ -173,7 +173,10 @@
     </div>
   </div>
 
-  <div class="section-title">Guest List</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
+    <div class="section-title" style="margin-bottom:0">Guest List</div>
+    <span id="guest-counter" style="background:var(--dark);color:var(--gold-light);padding:6px 18px;border-radius:20px;font-size:14px;letter-spacing:1px;border:1px solid var(--gold);"></span>
+  </div>
   <div class="section-sub">Add your guests and assign each one a table number</div>
 
   <div class="form-card">
@@ -325,8 +328,7 @@ async function loadFromSheets() {
     const res = await fetch(scriptUrl + '?action=get', {mode:'cors'});
     const data = await res.json();
     if (Array.isArray(data)) {
-      guests = data;
-      // Restore check-in log from guests that are already checked in
+      guests = data.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
       checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
       saveLocal();
       renderGuestList();
@@ -336,6 +338,7 @@ async function loadFromSheets() {
   } catch(e) {
     bar.innerHTML = `<div class="cloud-status disconnected">&#9888; Could not reach Google Sheets. Loaded local backup.</div>`;
     loadLocal();
+    guests = guests.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
     checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
     renderGuestList();
     renderCheckInLog();
@@ -430,17 +433,24 @@ function renderGuestList() {
   const tbody = document.getElementById('guest-tbody');
   const empty = document.getElementById('empty-msg');
   const table = document.getElementById('guest-table');
+  const checkedInCount = guests.filter(g => g.checkedIn === true).length;
+  const totalCount = guests.length;
+  // Update counter display
+  const counter = document.getElementById('guest-counter');
+  if (counter) counter.textContent = totalCount > 0 ? `${checkedInCount} / ${totalCount} checked in` : '';
   if (guests.length === 0) { empty.style.display = 'block'; table.style.display = 'none'; return; }
   empty.style.display = 'none';
   table.style.display = 'table';
-  tbody.innerHTML = guests.map((g,i) => `
-    <tr>
+  tbody.innerHTML = guests.map((g,i) => {
+    const arrived = g.checkedIn === true;
+    return `<tr>
       <td style="color:var(--text-light);font-size:14px">${i+1}</td>
       <td><strong>${g.name}</strong>${g.isCouple ? '<span class="couple-tag">&#128107; Couple</span>' : ''}</td>
       <td><span class="badge">Table ${g.table}</span></td>
-      <td>${g.checkedIn ? `<span style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;padding:3px 10px;border-radius:20px;font-size:12px;">&#10003; Arrived ${g.checkedInTime}</span>` : '<span style="color:var(--text-light);font-size:13px;">Not yet arrived</span>'}</td>
+      <td>${arrived ? `<span style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;padding:3px 10px;border-radius:20px;font-size:12px;">&#10003; Arrived ${g.checkedInTime}</span>` : '<span style="color:var(--text-light);font-size:13px;">Not yet arrived</span>'}</td>
       <td><button class="btn btn-danger" onclick="removeGuest('${g.id}')">Remove</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 // ── QR CODES ──
@@ -535,7 +545,7 @@ function renderCheckInLog() {
   const sorted = guests.filter(g => g.checkedIn).sort((a,b) => (b.checkedInTime||'').localeCompare(a.checkedInTime||''));
   if (sorted.length === 0) {
     list.innerHTML = '<li style="padding:20px;color:var(--text-light);font-style:italic;font-size:15px">No guests checked in yet</li>';
-    document.getElementById('checkin-count').textContent = '0 invites checked in';
+    document.getElementById('checkin-count').textContent = `0 / ${guests.length} guests checked in`;
     return;
   }
   list.innerHTML = sorted.map(g => `
@@ -546,7 +556,7 @@ function renderCheckInLog() {
         <span class="log-time">${g.checkedInTime}</span>
       </span>
     </li>`).join('');
-  document.getElementById('checkin-count').textContent = `${sorted.length} invite${sorted.length!==1?'s':''} checked in`;
+  document.getElementById('checkin-count').textContent = `${sorted.length} / ${guests.length} guests checked in`;
 }
 
 function clearLog() {
