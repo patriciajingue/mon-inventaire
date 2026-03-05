@@ -295,10 +295,10 @@ window.addEventListener('DOMContentLoaded', () => {
   renderStatusBar();
   if (scriptUrl) {
     loadFromSheets();
-    // Auto-refresh from Sheets every 30s so multiple devices stay in sync
+    // Poll every 15s for multi-device sync — safe because loadFromSheets now MERGES
     setInterval(() => {
-      if (scriptUrl && (Date.now() - lastSaveTime > 10000)) loadFromSheets(true);
-    }, 30000);
+      if (scriptUrl && !isSaving) loadFromSheets(true);
+    }, 15000);
   } else {
     document.getElementById('setup-banner').style.display = 'block';
     loadLocal();
@@ -306,6 +306,13 @@ window.addEventListener('DOMContentLoaded', () => {
     checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
     renderGuestList();
     renderCheckInLog();
+  }
+});
+
+// Also re-sync when tab becomes visible (instant sync when switching back)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && scriptUrl && !isSaving) {
+    loadFromSheets(true);
   }
 });
 
@@ -338,7 +345,18 @@ async function loadFromSheets(silent) {
     const res = await fetch(scriptUrl + '?action=get', {mode:'cors'});
     const data = await res.json();
     if (Array.isArray(data)) {
-      guests = data.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
+      // MERGE: never erase a check-in that exists locally
+      // For each guest from Sheets, if we already have them locally with checkedIn=true, keep it
+      const incoming = data.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
+      incoming.forEach(incomingGuest => {
+        const local = guests.find(g => g.id === incomingGuest.id);
+        if (local && local.checkedIn === true) {
+          // Local has a check-in Sheets doesn't know about yet — keep it
+          incomingGuest.checkedIn = true;
+          incomingGuest.checkedInTime = local.checkedInTime;
+        }
+      });
+      guests = incoming;
       checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
       saveLocal();
       renderGuestList();
