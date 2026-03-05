@@ -223,7 +223,10 @@
 
 <!-- PANEL 3: SCANNER -->
 <div id="panel-scanner" class="panel">
-  <div class="section-title">Ceremony Check-In</div>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:6px;">
+    <div class="section-title" style="margin-bottom:0">Ceremony Check-In</div>
+    <span id="scanner-counter" style="background:var(--dark);color:var(--gold-light);padding:6px 18px;border-radius:20px;font-size:14px;letter-spacing:1px;border:1px solid var(--gold);"></span>
+  </div>
   <div class="section-sub">Scan a guest's QR code to show their table assignment</div>
   <div class="scanner-layout">
     <div class="scanner-box">
@@ -293,9 +296,14 @@ window.addEventListener('DOMContentLoaded', () => {
   renderStatusBar();
   if (scriptUrl) {
     loadFromSheets();
+    // Auto-refresh from Sheets every 30s so multiple devices stay in sync
+    setInterval(() => {
+      if (scriptUrl) loadFromSheets();
+    }, 30000);
   } else {
     document.getElementById('setup-banner').style.display = 'block';
     loadLocal();
+    guests = guests.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true'}));
     checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
     renderGuestList();
     renderCheckInLog();
@@ -506,6 +514,7 @@ function handleScan(val) {
       const time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
       guest.checkedIn = true;
       guest.checkedInTime = time;
+      saveLocal();
       saveToSheets();
       display.className = 'result-display found';
       if (guest.isCouple) {
@@ -514,6 +523,7 @@ function handleScan(val) {
         display.innerHTML = `<div class="result-label">Welcome to the celebration!</div><div class="result-name">${guest.name}</div><div class="result-table-num">${guest.table}</div><div class="result-label">Your Table Number</div>`;
       }
       logCheckIn(guest, time);
+      renderGuestList();
       setTimeout(() => { clearScan(); }, 4000);
     } else {
       display.className = 'result-display not-found';
@@ -542,10 +552,13 @@ function logCheckIn(guest, time) {
 
 function renderCheckInLog() {
   const list = document.getElementById('log-list');
-  const sorted = guests.filter(g => g.checkedIn).sort((a,b) => (b.checkedInTime||'').localeCompare(a.checkedInTime||''));
+  const sorted = guests.filter(g => g.checkedIn === true).sort((a,b) => (b.checkedInTime||'').localeCompare(a.checkedInTime||''));
+  const label = `${sorted.length} / ${guests.length} guests checked in`;
+  document.getElementById('checkin-count').textContent = label;
+  const sc = document.getElementById('scanner-counter');
+  if (sc) sc.textContent = label;
   if (sorted.length === 0) {
     list.innerHTML = '<li style="padding:20px;color:var(--text-light);font-style:italic;font-size:15px">No guests checked in yet</li>';
-    document.getElementById('checkin-count').textContent = `0 / ${guests.length} guests checked in`;
     return;
   }
   list.innerHTML = sorted.map(g => `
@@ -556,7 +569,6 @@ function renderCheckInLog() {
         <span class="log-time">${g.checkedInTime}</span>
       </span>
     </li>`).join('');
-  document.getElementById('checkin-count').textContent = `${sorted.length} / ${guests.length} guests checked in`;
 }
 
 function clearLog() {
