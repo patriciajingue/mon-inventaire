@@ -293,7 +293,9 @@ window.addEventListener('DOMContentLoaded', () => {
   } else {
     document.getElementById('setup-banner').style.display = 'block';
     loadLocal();
+    checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
     renderGuestList();
+    renderCheckInLog();
   }
 });
 
@@ -324,14 +326,19 @@ async function loadFromSheets() {
     const data = await res.json();
     if (Array.isArray(data)) {
       guests = data;
+      // Restore check-in log from guests that are already checked in
+      checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
       saveLocal();
       renderGuestList();
+      renderCheckInLog();
       renderStatusBar();
     }
   } catch(e) {
     bar.innerHTML = `<div class="cloud-status disconnected">&#9888; Could not reach Google Sheets. Loaded local backup.</div>`;
     loadLocal();
+    checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
     renderGuestList();
+    renderCheckInLog();
   }
 }
 
@@ -520,19 +527,35 @@ function clearScan() {
 function logCheckIn(guest, time) {
   if (!time) { const now = new Date(); time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
   checkIns.unshift({guest, time});
+  renderCheckInLog();
+}
+
+function renderCheckInLog() {
   const list = document.getElementById('log-list');
-  if (list.querySelector('li[style]')) list.innerHTML = '';
-  const li = document.createElement('li');
-  li.className = 'log-item';
-  li.innerHTML = `<span>${guest.name}${guest.isCouple ? ' <span class="couple-tag">&#128107;</span>' : ''}</span><span style="display:flex;gap:8px;align-items:center"><span class="log-table">T${guest.table}</span><span class="log-time">${time}</span></span>`;
-  list.prepend(li);
-  document.getElementById('checkin-count').textContent = `${checkIns.length} invite${checkIns.length!==1?'s':''} checked in`;
+  const sorted = guests.filter(g => g.checkedIn).sort((a,b) => (b.checkedInTime||'').localeCompare(a.checkedInTime||''));
+  if (sorted.length === 0) {
+    list.innerHTML = '<li style="padding:20px;color:var(--text-light);font-style:italic;font-size:15px">No guests checked in yet</li>';
+    document.getElementById('checkin-count').textContent = '0 invites checked in';
+    return;
+  }
+  list.innerHTML = sorted.map(g => `
+    <li class="log-item">
+      <span>${g.name}${g.isCouple ? ' <span class="couple-tag">&#128107;</span>' : ''}</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="log-table">T${g.table}</span>
+        <span class="log-time">${g.checkedInTime}</span>
+      </span>
+    </li>`).join('');
+  document.getElementById('checkin-count').textContent = `${sorted.length} invite${sorted.length!==1?'s':''} checked in`;
 }
 
 function clearLog() {
+  if (!confirm('This will clear ALL check-in records. Are you sure?')) return;
+  guests.forEach(g => { g.checkedIn = false; g.checkedInTime = ''; });
   checkIns = [];
-  document.getElementById('log-list').innerHTML = '<li style="padding:20px;color:var(--text-light);font-style:italic;font-size:15px">No guests checked in yet</li>';
-  document.getElementById('checkin-count').textContent = '0 invites checked in';
+  saveToSheets();
+  renderCheckInLog();
+  renderGuestList();
 }
 </script>
 </body>
