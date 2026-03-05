@@ -289,7 +289,6 @@ let checkIns = [];
 let scanTimer = null;
 let inviteType = 'solo';
 let scriptUrl = localStorage.getItem('wedding_script_url') || '';
-let syncTimeout = null;
 
 // ── INIT ──
 window.addEventListener('DOMContentLoaded', () => {
@@ -298,7 +297,7 @@ window.addEventListener('DOMContentLoaded', () => {
     loadFromSheets();
     // Auto-refresh from Sheets every 30s so multiple devices stay in sync
     setInterval(() => {
-      if (scriptUrl) loadFromSheets();
+      if (scriptUrl && (Date.now() - lastSaveTime > 10000)) loadFromSheets(true);
     }, 30000);
   } else {
     document.getElementById('setup-banner').style.display = 'block';
@@ -329,9 +328,12 @@ function disconnectSheets() {
 }
 
 // ── GOOGLE SHEETS ──
-async function loadFromSheets() {
+let isSaving = false;
+
+async function loadFromSheets(silent) {
+  if (isSaving) return; // don't overwrite while a save is in progress
   const bar = document.getElementById('status-bar');
-  bar.innerHTML = `<div class="cloud-status loading">&#8987; Loading guest list from Google Sheets&#8230;</div>`;
+  if (!silent) bar.innerHTML = `<div class="cloud-status loading">&#8987; Loading guest list from Google Sheets&#8230;</div>`;
   try {
     const res = await fetch(scriptUrl + '?action=get', {mode:'cors'});
     const data = await res.json();
@@ -344,27 +346,32 @@ async function loadFromSheets() {
       renderStatusBar();
     }
   } catch(e) {
-    bar.innerHTML = `<div class="cloud-status disconnected">&#9888; Could not reach Google Sheets. Loaded local backup.</div>`;
-    loadLocal();
-    guests = guests.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
-    checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
-    renderGuestList();
-    renderCheckInLog();
+    if (!silent) {
+      bar.innerHTML = `<div class="cloud-status disconnected">&#9888; Could not reach Google Sheets. Loaded local backup.</div>`;
+      loadLocal();
+      guests = guests.map(g => ({...g, checkedIn: g.checkedIn === true || g.checkedIn === 'true', table: Number(g.table)}));
+      checkIns = guests.filter(g => g.checkedIn).map(g => ({guest: g, time: g.checkedInTime}));
+      renderGuestList();
+      renderCheckInLog();
+    }
+    // silent refresh failure: keep current in-memory state intact
   }
 }
 
+let lastSaveTime = 0;
+
 async function saveToSheets() {
-  if (!scriptUrl) { saveLocal(); return; }
-  saveLocal();
-  clearTimeout(syncTimeout);
-  syncTimeout = setTimeout(async () => {
-    try {
-      const form = new FormData();
-      form.append('action', 'save');
-      form.append('data', JSON.stringify(guests));
-      await fetch(scriptUrl, { method: 'POST', body: form });
-    } catch(e) { /* silent fail, local is already saved */ }
-  }, 800);
+  saveLocal(); // always save locally first, instantly
+  if (!scriptUrl) return;
+  isSaving = true;
+  try {
+    const form = new FormData();
+    form.append('action', 'save');
+    form.append('data', JSON.stringify(guests));
+    await fetch(scriptUrl, { method: 'POST', body: form });
+    lastSaveTime = Date.now();
+  } catch(e) { /* silent fail, local is already saved */ }
+  finally { isSaving = false; }
 }
 
 function saveScriptUrl() {
@@ -433,8 +440,10 @@ function addGuest() {
 function removeGuest(id) {
   if (!confirm('Remove this guest?')) return;
   guests = guests.filter(g => g.id !== id);
+  checkIns = checkIns.filter(c => c.guest.id !== id);
   saveToSheets();
   renderGuestList();
+  renderCheckInLog();
 }
 
 function renderGuestList() {
@@ -515,7 +524,9 @@ function handleScan(val) {
       guest.checkedIn = true;
       guest.checkedInTime = time;
       saveLocal();
-      saveToSheets();
+      renderGuestList();
+      renderCheckInLog();
+      saveToSheets(); // fire and forget - local already saved above
       display.className = 'result-display found';
       if (guest.isCouple) {
         display.innerHTML = `<div class="result-label">Welcome to the celebration!</div><div class="result-name" style="font-size:22px">${guest.names[0]}</div><div style="color:var(--gold);font-size:18px;margin:2px 0">&amp; ${guest.names[1]}</div><div class="result-table-num">${guest.table}</div><div class="result-label">Your Table Number</div>`;
@@ -523,7 +534,6 @@ function handleScan(val) {
         display.innerHTML = `<div class="result-label">Welcome to the celebration!</div><div class="result-name">${guest.name}</div><div class="result-table-num">${guest.table}</div><div class="result-label">Your Table Number</div>`;
       }
       logCheckIn(guest, time);
-      renderGuestList();
       setTimeout(() => { clearScan(); }, 4000);
     } else {
       display.className = 'result-display not-found';
