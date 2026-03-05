@@ -199,7 +199,7 @@
 
   <div class="empty-state" id="empty-msg">No guests added yet &#8212; start building your list above</div>
   <table class="guest-table" id="guest-table" style="display:none">
-    <thead><tr><th>#</th><th>Guest Name</th><th>Table</th><th>Guest ID</th><th>Action</th></tr></thead>
+    <thead><tr><th>#</th><th>Guest Name</th><th>Table</th><th>Check-In Status</th><th>Action</th></tr></thead>
     <tbody id="guest-tbody"></tbody>
   </table>
 </div>
@@ -251,29 +251,25 @@
 // ── APPS SCRIPT CODE TO COPY ──
 const APPS_SCRIPT_CODE = `function doGet(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Guests") || SpreadsheetApp.getActiveSpreadsheet().insertSheet("Guests");
-  var action = e.parameter.action;
-  var headers = ["id","name","table","isCouple","names"];
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return output([]);
+  var rows = data.slice(1).map(r => ({
+    id: r[0], name: r[1], table: Number(r[2]),
+    isCouple: r[3] === "true" || r[3] === true,
+    names: r[4] ? r[4].split("|") : [],
+    checkedIn: r[5] === true || r[5] === "true",
+    checkedInTime: r[6] || ""
+  }));
+  return output(rows);
+}
 
-  if (action === "get") {
-    var data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return output([]);
-    var rows = data.slice(1).map(r => ({
-      id: r[0], name: r[1], table: Number(r[2]),
-      isCouple: r[3] === "true" || r[3] === true,
-      names: r[4] ? r[4].split("|") : []
-    }));
-    return output(rows);
-  }
-
-  if (action === "save") {
-    var guests = JSON.parse(e.parameter.data);
-    sheet.clearContents();
-    sheet.appendRow(headers);
-    guests.forEach(g => sheet.appendRow([g.id, g.name, g.table, g.isCouple||false, (g.names||[]).join("|")]));
-    return output({status:"ok"});
-  }
-
-  return output({error:"unknown action"});
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Guests") || SpreadsheetApp.getActiveSpreadsheet().insertSheet("Guests");
+  var guests = JSON.parse(e.parameter.data);
+  sheet.clearContents();
+  sheet.appendRow(["id","name","table","isCouple","names","checkedIn","checkedInTime"]);
+  guests.forEach(g => sheet.appendRow([g.id, g.name, g.table, g.isCouple||false, (g.names||[]).join("|"), g.checkedIn||false, g.checkedInTime||""]));
+  return output({status:"ok"});
 }
 
 function output(data) {
@@ -435,7 +431,7 @@ function renderGuestList() {
       <td style="color:var(--text-light);font-size:14px">${i+1}</td>
       <td><strong>${g.name}</strong>${g.isCouple ? '<span class="couple-tag">&#128107; Couple</span>' : ''}</td>
       <td><span class="badge">Table ${g.table}</span></td>
-      <td style="font-family:monospace;font-size:13px;color:var(--text-light)">${g.id}</td>
+      <td>${g.checkedIn ? `<span style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;padding:3px 10px;border-radius:20px;font-size:12px;">&#10003; Arrived ${g.checkedInTime}</span>` : '<span style="color:var(--text-light);font-size:13px;">Not yet arrived</span>'}</td>
       <td><button class="btn btn-danger" onclick="removeGuest('${g.id}')">Remove</button></td>
     </tr>`).join('');
 }
@@ -481,13 +477,27 @@ function handleScan(val) {
     const guest = guests.find(g => g.id === val);
     const display = document.getElementById('result-display');
     if (guest) {
+      // ── ALREADY CHECKED IN? BLOCK DUPLICATE ──
+      if (guest.checkedIn) {
+        display.className = 'result-display not-found';
+        display.innerHTML = `<div class="result-error">&#9888; Already Checked In<br><span style="font-size:15px;margin-top:8px;display:block">${guest.name} arrived at ${guest.checkedInTime}</span></div>`;
+        setTimeout(() => { clearScan(); }, 3000);
+        return;
+      }
+      // ── FIRST TIME SCAN ──
+      const now = new Date();
+      const time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      guest.checkedIn = true;
+      guest.checkedInTime = time;
+      saveToSheets();
       display.className = 'result-display found';
       if (guest.isCouple) {
         display.innerHTML = `<div class="result-label">Welcome to the celebration!</div><div class="result-name" style="font-size:22px">${guest.names[0]}</div><div style="color:var(--gold);font-size:18px;margin:2px 0">&amp; ${guest.names[1]}</div><div class="result-table-num">${guest.table}</div><div class="result-label">Your Table Number</div>`;
       } else {
         display.innerHTML = `<div class="result-label">Welcome to the celebration!</div><div class="result-name">${guest.name}</div><div class="result-table-num">${guest.table}</div><div class="result-label">Your Table Number</div>`;
       }
-      logCheckIn(guest);
+      logCheckIn(guest, time);
+      setTimeout(() => { clearScan(); }, 4000);
     } else {
       display.className = 'result-display not-found';
       display.innerHTML = `<div class="result-error">&#10060; Guest not found<br><span style="font-size:15px;margin-top:8px;display:block">Code: ${val}</span></div>`;
@@ -507,9 +517,8 @@ function clearScan() {
   document.getElementById('scan-input').focus();
 }
 
-function logCheckIn(guest) {
-  const now = new Date();
-  const time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+function logCheckIn(guest, time) {
+  if (!time) { const now = new Date(); time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
   checkIns.unshift({guest, time});
   const list = document.getElementById('log-list');
   if (list.querySelector('li[style]')) list.innerHTML = '';
